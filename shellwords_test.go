@@ -10,10 +10,12 @@ import (
 	"testing"
 )
 
-var testcases = []struct {
+type testcase struct {
 	line     string
 	expected []string
-}{
+}
+
+var testcases = []testcase{
 	{``, []string{}},
 	{`""`, []string{``}},
 	{`''`, []string{``}},
@@ -44,6 +46,30 @@ var testcases = []struct {
 func TestSimple(t *testing.T) {
 	for _, testcase := range testcases {
 		args, err := Parse(testcase.line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(args, testcase.expected) {
+			t.Fatalf("Expected %#v for %q, but %#v:", testcase.expected, testcase.line, args)
+		}
+	}
+}
+
+func TestComment(t *testing.T) {
+	allCases := append(testcases, []testcase{
+		{"# comment", []string{}},
+		{"foo not#comment", []string{"foo", "not#comment"}},
+		{`foo "bar # baz" # comment`, []string{"foo", "bar # baz"}},
+		{"foo \"bar # baz\" # comment\nfoo\nbar # baz",
+			[]string{"foo", "bar # baz", "foo", "bar"}},
+		{"echo '# list all files' # line\\ncomment\n# whole line comment\nls -al '#' # more comment",
+			[]string{"echo", "# list all files", "ls", "-al", "#"}},
+	}...)
+
+	parser := NewParser()
+	parser.ParseComment = true
+	for _, testcase := range allCases {
+		args, err := parser.Parse(testcase.line)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -332,7 +358,7 @@ func TestHaveMore(t *testing.T) {
 	line := "echo 🍺; seq 1 10"
 	args, err := parser.Parse(line)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 	expected := []string{"echo", "🍺"}
 	if !reflect.DeepEqual(args, expected) {
@@ -346,7 +372,7 @@ func TestHaveMore(t *testing.T) {
 	line = string([]rune(line)[parser.Position+1:])
 	args, err = parser.Parse(line)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 	expected = []string{"seq", "1", "10"}
 	if !reflect.DeepEqual(args, expected) {
@@ -365,7 +391,7 @@ func TestHaveRedirect(t *testing.T) {
 	line := "ls -la 2>foo"
 	args, err := parser.Parse(line)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 	expected := []string{"ls", "-la"}
 	if !reflect.DeepEqual(args, expected) {
